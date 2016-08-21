@@ -25,6 +25,7 @@
 #include "workspace.h"
 #include <librepcbcommon/exceptions.h>
 #include <librepcbcommon/fileio/filepath.h>
+#include <librepcbcommon/fileio/fileutils.h>
 #include <librepcblibraryeditor/libraryeditor.h>
 #include <librepcbproject/project.h>
 #include "library/workspacelibrary.h"
@@ -92,10 +93,8 @@ Workspace::Workspace(const FilePath& wsPath) throw (Exception) :
         // the workspace can be opened by this application, so we will lock it
         mLock.lock(); // throws an exception on error
 
-        if (!mProjectsPath.mkPath())
-            qWarning() << "could not make path" << mProjectsPath;
-        if (!mLibraryPath.mkPath())
-            qWarning() << "could not make path" << mLibraryPath;
+        FileUtils::makePath(mProjectsPath); // can throw
+        FileUtils::makePath(mLibraryPath); // can throw
 
         // all OK, let's load the workspace stuff!
 
@@ -185,11 +184,18 @@ bool Workspace::isValidWorkspacePath(const FilePath& path) noexcept
 
 bool Workspace::createNewWorkspace(const FilePath& path) noexcept
 {
-    if (isValidWorkspacePath(path))
+    if (isValidWorkspacePath(path)) {
         return true;
+    }
 
     // create directory ".metadata/v#/" (and all needed parent directories)
-    return path.getPathTo(QString(".metadata/v%1").arg(APP_VERSION_MAJOR)).mkPath();
+    try {
+        FilePath path = path.getPathTo(QString(".metadata/v%1").arg(APP_VERSION_MAJOR));
+        FileUtils::makePath(path); // can throw
+        return true;
+    } catch (...) {
+        return false;
+    }
 }
 
 FilePath Workspace::getMostRecentlyUsedWorkspacePath() noexcept
