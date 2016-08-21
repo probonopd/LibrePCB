@@ -22,6 +22,7 @@
  ****************************************************************************************/
 #include <QtCore>
 #include "directorylock.h"
+#include "fileutils.h"
 #include "../systeminfo.h"
 
 /*****************************************************************************************
@@ -34,114 +35,85 @@ namespace librepcb {
  ****************************************************************************************/
 
 DirectoryLock::DirectoryLock() noexcept :
-    mFileToLock(), mLockFilepath(), mLockedByThisObject(false)
+    mDirToLock(), mLockFilePath(), mLockedByThisObject(false)
 {
     // nothing to do...
 }
 
-DirectoryLock::DirectoryLock(const FilePath& filepath) noexcept :
-    mFileToLock(), mLockFilepath(), mLockedByThisObject(false)
+DirectoryLock::DirectoryLock(const FilePath& dir) noexcept :
+    mDirToLock(), mLockFilePath(), mLockedByThisObject(false)
 {
-    setFileToLock(filepath);
+    setDirToLock(dir);
 }
 
 DirectoryLock::~DirectoryLock() noexcept
 {
-    if (mLockedByThisObject)
-        try{unlock();} catch (...) {}
+    if (mLockedByThisObject) {
+        try {
+            unlock(); // can throw
+        } catch (const Exception& e) {
+            qCritical() << "Could not remove lock file:" << e.getUserMsg();
+        }
+    }
 }
 
 /*****************************************************************************************
  *  Setters
  ****************************************************************************************/
 
-void DirectoryLock::setFileToLock(const FilePath& filepath) noexcept
+void DirectoryLock::setDirToLock(const FilePath& dir) noexcept
 {
     Q_ASSERT(!mLockedByThisObject);
-
-    mFileToLock = filepath;
-
-    // determine the filepath for the lock file
-    QString lockFileName = QStringLiteral(".~lock.") % filepath.getFilename() % QStringLiteral("#");
-    mLockFilepath = filepath.getParentDir().getPathTo(lockFileName);
+    mDirToLock = dir;
+    mLockFilePath = dir.getPathTo(".lock");
 }
 
 /*****************************************************************************************
  *  Getters
  ****************************************************************************************/
 
-DirectoryLock::LockStatus_t DirectoryLock::getStatus() const throw (Exception)
+DirectoryLock::LockStatus DirectoryLock::getStatus() const throw (Exception)
 {
-    if (!mLockFilepath.isValid())
-    {
-        throw RuntimeError(__FILE__, __LINE__, mLockFilepath.toStr(),
-            QString(tr("Invalid lock filepath: \"%1\"")).arg(mLockFilepath.toNative()));
+    // check if the directory to lock does exist
+    if (!mDirToLock.isExistingDir()) {
+        throw RuntimeError(__FILE__, __LINE__, QString(),  QString(
+            tr("The directory \"%1\" does not exist.")).arg(mDirToLock.toNative()));
     }
 
-    QFile file(mLockFilepath.toStr());
+    // when the directory is valid, the lock filepath must be valid too
+    Q_ASSERT(mLockFilePath.isValid());
 
-    if (!file.exists())
-    {
-        // there is no lock file
-        return LockStatus_t::Unlocked;
-    }
-
-    if (!file.open(QIODevice::ReadOnly))
-    {
-        throw RuntimeError(__FILE__, __LINE__, QString("%1: %2 [%3]")
-            .arg(mLockFilepath.toStr(), file.errorString()).arg(file.error()),
-            QString(tr("Could not open file \"%1\": %2"))
-            .arg(mLockFilepath.toNative(), file.errorString()));
+    // check if the lock file exists
+    if (!mLockFilePath.isExistingFile()) {
+        return LockStatus::Unlocked;
     }
 
     // read the content of the lock file
-    QStringList entries = QString::fromUtf8(file.readAll()).split(",");
-    file.close();
+    QString content = QString::fromUtf8(FileUtils::readFile(mLockFilePath)); // can throw
+    QStringList lines = content.split("\n", QString::KeepEmptyParts);
+    // check count of lines
+    if (lines.count() < 5) {
+        throw RuntimeError(__FILE__, __LINE__, content, QString(tr(
+            "The lock file \"%1\" has too few lines.")).arg(mLockFilePath.toNative()));
+    }
+    // read lock metadata
+    QString lockUser = lines.at(1);
+    QString lockHost = lines.at(2);
+    qint64 lockPid = lines.at(3).toLongLong();
 
-    if (entries.count() < 5)
-    {
-        throw RuntimeError(__FILE__, __LINE__, mLockFilepath.toStr(),
-            QString(tr("Invalid lock file \"%1\":\n%2"))
-            .arg(mLockFilepath.toNative()).arg(entries.join(",")));
+    // read metadata about this application instance
+    QString thisUser = SystemInfo::getUsername().remove("\n");
+    QString thisHost = SystemInfo::getHostname().remove("\n");
+    qint64 thisPid = QCoreApplication::applicationPid();
+
+    // check if the lock is a non-stale lock
+    if ((lockUser != thisUser) || (lockHost != thisHost) || (lockPid == thisPid)) {
+        return LockStatus::Locked;
     }
 
-    // check who has created the lock file
-    // (remove all commas as they are not allowed in the comma-seperated list)
-    if (       (entries[0] == SystemInfo::getFullUsername().remove(","))
-            && (entries[1] == SystemInfo::getUsername().remove(","))
-            && (entries[2] == SystemInfo::getHostname().remove(",")))
-    {
-        // the lock file was created by the current user and host computer -> check PID
-        qint64 pid = 0;
-        if (sizeof(qint64) == sizeof(int))
-            pid = entries[3].toInt();
-        else if (sizeof(qint64) == sizeof(long))
-            pid = entries[3].toLong();
-        else if (sizeof(qint64) == sizeof(long long))
-            pid = entries[3].toLongLong();
-        if (pid == 0)
-        {
-            throw LogicError(__FILE__, __LINE__, QString("%1/%2/%3")
-                .arg(sizeof(qint64)).arg(sizeof(int)).arg(sizeof(long)));
-        }
-
-        if (pid == QCoreApplication::applicationPid())
-        {
-            // the lock file was created with this application instance
-            return LockStatus_t::Locked;
-        }
-        else
-        {
-            // the lock file was created with another application instance
-            // TODO: check if the application instance that has created the lock file is still running!
-            return LockStatus_t::StaleLock;
-        }
-    }
-    else
-    {
-        // the lock file was created by another application instance
-        return LockStatus_t::Locked;
-    }
+    // the lock was created with another PID --> determine whether it's a stale lock or not
+    // @todo: check if the process which has created the lock file is still running!
+    return LockStatus::StaleLock;
 }
 
 /*****************************************************************************************
@@ -150,54 +122,26 @@ DirectoryLock::LockStatus_t DirectoryLock::getStatus() const throw (Exception)
 
 void DirectoryLock::lock() throw (Exception)
 {
-    if (!mLockFilepath.isValid())
-    {
-        throw RuntimeError(__FILE__, __LINE__, mLockFilepath.toStr(),
-            QString(tr("Invalid lock filepath: \"%1\"")).arg(mLockFilepath.toNative()));
+    // check if the directory to lock does exist
+    if (!mDirToLock.isExistingDir()) {
+        throw RuntimeError(__FILE__, __LINE__, QString(),  QString(
+            tr("The directory \"%1\" does not exist.")).arg(mDirToLock.toNative()));
     }
+
+    // when the directory is valid, the lock filepath must be valid too
+    Q_ASSERT(mLockFilePath.isValid());
 
     // prepare the content which will be written to the lock file
-    // (remove all commas as they are not allowed in the comma-seperated list)
-    QString content = QString("%1,%2,%3,%4,%5").arg(
-                          SystemInfo::getFullUsername().remove(","),
-                          SystemInfo::getUsername().remove(","),
-                          SystemInfo::getHostname().remove(","),
-                          QString::number(QCoreApplication::applicationPid()),
-                          QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
+    QStringList lines;
+    lines.append(SystemInfo::getFullUsername().remove("\n"));
+    lines.append(SystemInfo::getUsername().remove("\n"));
+    lines.append(SystemInfo::getHostname().remove("\n"));
+    lines.append(QString::number(QCoreApplication::applicationPid()));
+    lines.append(QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
+    QByteArray utf8content = lines.join('\n').toUtf8();
 
-    // create all parent directories (if they do not exist)
-    if (!mLockFilepath.getParentDir().mkPath())
-    {
-        qWarning() << "Could not create directories of the path" << mLockFilepath.toStr();
-        // do not return here; if the directories do really do not exist, writing to the
-        // lock file will also abort...
-    }
-
-    QSaveFile file(mLockFilepath.toStr());
-    if (!file.open(QIODevice::WriteOnly))
-    {
-        throw RuntimeError(__FILE__, __LINE__, QString("%1: %2 [%3]")
-            .arg(mLockFilepath.toStr(), file.errorString()).arg(file.error()),
-            QString(tr("Could not open or create file \"%1\": %2"))
-            .arg(mLockFilepath.toNative(), file.errorString()));
-    }
-
-    QByteArray utf8content = content.toUtf8();
-    qint64 written = file.write(utf8content);
-    if (written != utf8content.size())
-    {
-        throw RuntimeError(__FILE__, __LINE__,
-            QString("%1: %2 (only %3 of %4 bytes written)")
-            .arg(mLockFilepath.toStr(), file.errorString()).arg(written).arg(utf8content.size()),
-            QString(tr("Could not write to file \"%1\": %2"))
-            .arg(mLockFilepath.toNative(), file.errorString()));
-    }
-
-    if (!file.commit())
-    {
-        throw RuntimeError(__FILE__, __LINE__, QString(), QString(tr("Could not write to "
-            "file \"%1\": %2")).arg(mLockFilepath.toNative(), file.errorString()));
-    }
+    // create/overwrite lock file
+    FileUtils::writeFile(mLockFilePath, utf8content); // can throw
 
     // File Lock successfully created
     mLockedByThisObject = true;
@@ -205,23 +149,8 @@ void DirectoryLock::lock() throw (Exception)
 
 void DirectoryLock::unlock() throw (Exception)
 {
-    if (!mLockFilepath.isValid())
-    {
-        throw RuntimeError(__FILE__, __LINE__, mLockFilepath.toStr(),
-            QString(tr("Invalid lock filepath: \"%1\"")).arg(mLockFilepath.toNative()));
-    }
-
-    QFile file(mLockFilepath.toStr());
-    if (file.exists())
-    {
-        if (!file.remove())
-        {
-            throw RuntimeError(__FILE__, __LINE__, QString("%1: %2 [%3]")
-                .arg(mLockFilepath.toStr(), file.errorString()).arg(file.error()),
-                QString(tr("Could not remove file \"%1\": %2"))
-                .arg(mLockFilepath.toNative(), file.errorString()));
-        }
-    }
+    // remove the lock file
+    FileUtils::removeFile(mLockFilePath); // can throw
 
     // File Lock successfully removed
     mLockedByThisObject = false;
