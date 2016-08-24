@@ -100,7 +100,7 @@ DirectoryLock::LockStatus DirectoryLock::getStatus() const throw (Exception)
     QString lockUser = lines.at(1);
     QString lockHost = lines.at(2);
     qint64 lockPid = lines.at(3).toLongLong();
-    QDateTime lockAppStartTime = QDateTime::fromString(lines.at(4), Qt::ISODate);
+    QDateTime lockAppStartTime = QDateTime::fromString(lines.at(4), Qt::ISODate).toUTC();
 
     // read metadata about this application instance
     QString thisUser = SystemInfo::getUsername().remove("\n");
@@ -113,6 +113,9 @@ DirectoryLock::LockStatus DirectoryLock::getStatus() const throw (Exception)
 
     // the lock file was created with an application instance on this computer, now check
     // if that process is still running (if not, the lock is considered as stale)
+    QDateTime procStart = SystemInfo::getProcessStartTime(lockPid);
+    bool match = (procStart == lockAppStartTime);
+    Q_UNUSED(match);
     if (SystemInfo::getProcessStartTime(lockPid) == lockAppStartTime) {
         return LockStatus::Locked; // the application which holds the lock is still running
     } else {

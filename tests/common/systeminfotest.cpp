@@ -94,6 +94,9 @@ TEST(SystemInfo, testGetProcessStartTime)
         qint64 diffMs = currentTime.toMSecsSinceEpoch() - startTime.toMSecsSinceEpoch();
         std::cout << "Time difference [ms]: " << diffMs << std::endl;
         ASSERT_TRUE(abs(diffMs) < 10000); // allow up to 10s difference
+
+        process.kill();
+        ASSERT_TRUE(process.waitForFinished());
     }
 }
 

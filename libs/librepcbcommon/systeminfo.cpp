@@ -28,11 +28,12 @@
 #if defined(Q_OS_OSX) // Mac OS X
 #include <type_traits>
 #include <sys/proc_info.h>
+#include <libproc.h>
 #elif defined(Q_OS_UNIX) // UNIX/Linux
 #include <unistd.h>
 #include <pwd.h>
 #elif defined(Q_OS_WIN32) || defined(Q_OS_WIN64) // Windows
-
+#include <Windows.h>
 #else
 #error "Unknown operating system!"
 #endif
@@ -111,14 +112,14 @@ QDateTime SystemInfo::getProcessStartTime(qint64 pid) throw (Exception)
 #if defined(Q_OS_OSX) // Mac OS X
     // http://stackoverflow.com/questions/31603885/get-process-creation-date-time-in-osx-with-c-c/31605649#31605649
     // http://opensource.apple.com//source/xnu/xnu-2782.40.9/bsd/kern/proc_info.c
-    proc_bsdinfo info;
-    int ret = proc_pidbsdinfo(pid, &info, 1);
+    proc_bsdinfo bsdinfo;
+    int ret = proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &bsdinfo, sizeof(bsdinfo));
     if (ret != 0) {
         throw RuntimeError(__FILE__, __LINE__, QString(),
             tr("Could not determine process start time."));
     }
-    static_assert(std::is_same<decltype(info.pbi_start_tvsec), quint64>::value, "Unexpected type!");
-    throw Exception(__FILE__, __LINE__, QString(), QString::number(info.pbi_start_tvsec));
+    static_assert(std::is_same<decltype(bsdinfo.pbi_start_tvsec), quint64>::value, "Unexpected type!");
+    throw Exception(__FILE__, __LINE__, QString(), QString::number(bsdinfo.pbi_start_tvsec));
 #elif defined(Q_OS_UNIX) // UNIX/Linux
     if (!FilePath("/proc/version").isExistingFile()) {
         throw RuntimeError(__FILE__, __LINE__, QString(),
@@ -138,7 +139,40 @@ QDateTime SystemInfo::getProcessStartTime(qint64 pid) throw (Exception)
         return QDateTime(); // process is not running
     }
 #elif defined(Q_OS_WIN32) || defined(Q_OS_WIN64) // Windows
-
+    HANDLE process = ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (process != NULL) {
+        FILETIME creationTime, exitTime, kernelTime, userTime;
+        BOOL ret = ::GetProcessTimes(process, &creationTime, &exitTime, &kernelTime, &userTime);
+        if (ret != FALSE) {
+            SYSTEMTIME sysTime;
+            BOOL ret = ::FileTimeToSystemTime(&creationTime, &sysTime);
+            if (ret != FALSE) {
+                QDate date(sysTime.wYear, sysTime.wMonth, sysTime.wDay);
+                QTime time(sysTime.wHour, sysTime.wMinute, sysTime.wSecond);
+                QDateTime created = QDateTime(date, time, Qt::UTC).toUTC();
+                if (created.isValid()) {
+                    return created;
+                } else {
+                    throw RuntimeError(__FILE__, __LINE__, QString(),
+                        tr("Could not determine process start time."));
+                }
+            } else {
+                throw RuntimeError(__FILE__, __LINE__, QString(),
+                    tr("Could not determine process start time."));
+            }
+        } else {
+            throw RuntimeError(__FILE__, __LINE__, QString(),
+                tr("Could not determine process start time."));
+        }
+    } else {
+        DWORD error = GetLastError();
+        if (error == ERROR_INVALID_PARAMETER) {
+            return QDateTime(); // process is not running
+        } else {
+            throw RuntimeError(__FILE__, __LINE__, QString(),
+                tr("Could not determine process start time."));
+        }
+    }
 #else
 #error "Unknown operating system!"
 #endif

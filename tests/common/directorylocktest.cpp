@@ -213,13 +213,22 @@ TEST_F(DirectoryLockTest, testMultipleStatusLockUnlock)
 
 TEST_F(DirectoryLockTest, testStaleLock)
 {
+    QProcess process;
+    FilePath generatedDir(qApp->applicationDirPath());
+    FilePath librepcbExe = generatedDir.getPathTo("librepcb");
+    process.start(librepcbExe.toStr());
+    ASSERT_TRUE(process.waitForStarted());
+    qint64 pid = process.processId();
+    process.kill();
+    ASSERT_TRUE(process.waitForFinished());
+
     // get the lock
     DirectoryLock lock(mTempDir);
     lock.lock();
 
     // replace the PID in the lock file
     QStringList lines = QString(FileUtils::readFile(mTempLockFilePath)).split('\n');
-    lines[3] = "9999999999"; // a process with this PID should hopefully not exist ;)
+    lines[3] = QString::number(pid);
     FileUtils::writeFile(mTempLockFilePath, lines.join('\n').toUtf8());
 
     // check status
