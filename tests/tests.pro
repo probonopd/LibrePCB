@@ -43,6 +43,7 @@ SOURCES += main.cpp \
     common/pointtest.cpp \
     common/scopeguardtest.cpp \
     common/applicationtest.cpp \
-    common/directorylocktest.cpp
+    common/directorylocktest.cpp \
+    common/systeminfotest.cpp
 
 HEADERS +=

@@ -92,6 +92,11 @@ bool FilePath::isEmptyDir() const noexcept
     return (dir.count() == 0);
 }
 
+bool FilePath::isSymLink() const noexcept
+{
+    return (mIsValid && mFileInfo.isSymLink());
+}
+
 bool FilePath::isRoot() const noexcept
 {
     // do not use QFileInfo::isRoot() because it's not the same as QDir::isRoot()!
@@ -183,6 +188,15 @@ QString FilePath::getFilename() const noexcept
         return mFileInfo.fileName();
     else
         return QString();
+}
+
+FilePath FilePath::getSymLinkTarget() const noexcept
+{
+    if (mIsValid) {
+        return FilePath(mFileInfo.symLinkTarget());
+    } else {
+        return FilePath();
+    }
 }
 
 FilePath FilePath::getParentDir() const noexcept

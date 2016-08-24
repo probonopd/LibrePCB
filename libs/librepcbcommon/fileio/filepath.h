@@ -204,6 +204,13 @@ class FilePath final
         bool isEmptyDir() const noexcept;
 
         /**
+         * @brief Check if the specified filepath is a symbolic link (shortcut on windows)
+         *
+         * @return True if it is a symbolic link, false if not (or invalid)
+         */
+        bool isSymLink() const noexcept;
+
+        /**
          * @brief Check if the specified filepath is the root directory
          *
          * @return True if the filepath is the filesystem root, false otherwise
@@ -305,6 +312,13 @@ class FilePath final
          * @return The whole filename
          */
         QString getFilename() const noexcept;
+
+        /**
+         * @brief Get the symbolic link target (shortcut on windows) with this filepath
+         *
+         * @return FilePath to the symlink target (invalid if this path is not a symlink)
+         */
+        FilePath getSymLinkTarget() const noexcept;
 
         /**
          * @brief Get the filepath of the parent directory of the file or directory

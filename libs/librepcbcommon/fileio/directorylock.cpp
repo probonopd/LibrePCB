@@ -92,7 +92,7 @@ DirectoryLock::LockStatus DirectoryLock::getStatus() const throw (Exception)
     QString content = QString::fromUtf8(FileUtils::readFile(mLockFilePath)); // can throw
     QStringList lines = content.split("\n", QString::KeepEmptyParts);
     // check count of lines
-    if (lines.count() < 5) {
+    if (lines.count() < 6) {
         throw RuntimeError(__FILE__, __LINE__, content, QString(tr(
             "The lock file \"%1\" has too few lines.")).arg(mLockFilePath.toNative()));
     }
@@ -100,20 +100,24 @@ DirectoryLock::LockStatus DirectoryLock::getStatus() const throw (Exception)
     QString lockUser = lines.at(1);
     QString lockHost = lines.at(2);
     qint64 lockPid = lines.at(3).toLongLong();
+    QDateTime lockAppStartTime = QDateTime::fromString(lines.at(4), Qt::ISODate);
 
     // read metadata about this application instance
     QString thisUser = SystemInfo::getUsername().remove("\n");
     QString thisHost = SystemInfo::getHostname().remove("\n");
-    qint64 thisPid = QCoreApplication::applicationPid();
 
-    // check if the lock is a non-stale lock
-    if ((lockUser != thisUser) || (lockHost != thisHost) || (lockPid == thisPid)) {
+    // check if the lock file was created with another computer or user
+    if ((lockUser != thisUser) || (lockHost != thisHost)) {
         return LockStatus::Locked;
     }
 
-    // the lock was created with another PID --> determine whether it's a stale lock or not
-    // @todo: check if the process which has created the lock file is still running!
-    return LockStatus::StaleLock;
+    // the lock file was created with an application instance on this computer, now check
+    // if that process is still running (if not, the lock is considered as stale)
+    if (SystemInfo::getProcessStartTime(lockPid) == lockAppStartTime) {
+        return LockStatus::Locked; // the application which holds the lock is still running
+    } else {
+        return LockStatus::StaleLock; // the process which holds the lock seems to be crashed
+    }
 }
 
 /*****************************************************************************************
@@ -137,6 +141,8 @@ void DirectoryLock::lock() throw (Exception)
     lines.append(SystemInfo::getUsername().remove("\n"));
     lines.append(SystemInfo::getHostname().remove("\n"));
     lines.append(QString::number(QCoreApplication::applicationPid()));
+    lines.append(SystemInfo::getProcessStartTime(QCoreApplication::applicationPid())
+                 .toString(Qt::ISODate));
     lines.append(QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
     QByteArray utf8content = lines.join('\n').toUtf8();
 

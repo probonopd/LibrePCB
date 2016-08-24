@@ -236,14 +236,17 @@ TEST_F(DirectoryLockTest, testLockFileContent)
     QList<QByteArray> lines = FileUtils::readFile(mTempLockFilePath).split('\n');
 
     // verify content
-    EXPECT_EQ(5, lines.count());
+    EXPECT_EQ(6, lines.count());
     EXPECT_EQ(SystemInfo::getFullUsername().remove('\n'), QString(lines.value(0)));
     EXPECT_EQ(SystemInfo::getUsername().remove('\n'), QString(lines.value(1)));
     EXPECT_EQ(SystemInfo::getHostname().remove('\n'), QString(lines.value(2)));
     EXPECT_EQ(QString::number(qApp->applicationPid()), QString(lines.value(3)));
-    QDateTime dateTime = QDateTime::fromString(QString(lines.value(4)), Qt::ISODate);
-    EXPECT_TRUE(dateTime.isValid());
-    EXPECT_NEAR(dateTime.toMSecsSinceEpoch(),
+    QDateTime procStartTime = QDateTime::fromString(QString(lines.value(4)), Qt::ISODate);
+    EXPECT_TRUE(procStartTime.isValid());
+    EXPECT_EQ(SystemInfo::getProcessStartTime(qApp->applicationPid()), procStartTime);
+    QDateTime lockTime = QDateTime::fromString(QString(lines.value(5)), Qt::ISODate);
+    EXPECT_TRUE(lockTime.isValid());
+    EXPECT_NEAR(lockTime.toMSecsSinceEpoch(),
                 QDateTime::currentDateTime().toMSecsSinceEpoch(),
                 10000); // allow up to 10 seconds difference
 }

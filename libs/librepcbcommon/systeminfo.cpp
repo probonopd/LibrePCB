@@ -23,10 +23,18 @@
 #include <QtCore>
 #include <QHostInfo>
 #include "systeminfo.h"
+#include "fileio/filepath.h"
 
-#if (defined(Q_OS_UNIX) || defined(Q_OS_LINUX)) && (!defined(Q_OS_MACX)) // For UNIX and Linux
+#if defined(Q_OS_OSX) // Mac OS X
+#include <type_traits>
+#include <sys/proc_info.h>
+#elif defined(Q_OS_UNIX) // UNIX/Linux
 #include <unistd.h>
 #include <pwd.h>
+#elif defined(Q_OS_WIN32) || defined(Q_OS_WIN64) // Windows
+
+#else
+#error "Unknown operating system!"
 #endif
 
 /*****************************************************************************************
@@ -96,6 +104,44 @@ QString SystemInfo::getHostname() noexcept
         qWarning() << "Could not determine the system's hostname!";
 
     return hostname;
+}
+
+QDateTime SystemInfo::getProcessStartTime(qint64 pid) throw (Exception)
+{
+#if defined(Q_OS_OSX) // Mac OS X
+    // http://stackoverflow.com/questions/31603885/get-process-creation-date-time-in-osx-with-c-c/31605649#31605649
+    // http://opensource.apple.com//source/xnu/xnu-2782.40.9/bsd/kern/proc_info.c
+    proc_bsdinfo info;
+    int ret = proc_pidbsdinfo(pid, &info, 1);
+    if (ret != 0) {
+        throw RuntimeError(__FILE__, __LINE__, QString(),
+            tr("Could not determine process start time."));
+    }
+    static_assert(std::is_same<decltype(info.pbi_start_tvsec), quint64>::value, "Unexpected type!");
+    throw Exception(__FILE__, __LINE__, QString(), QString::number(info.pbi_start_tvsec));
+#elif defined(Q_OS_UNIX) // UNIX/Linux
+    if (!FilePath("/proc/version").isExistingFile()) {
+        throw RuntimeError(__FILE__, __LINE__, QString(),
+            tr("Could not find the file \"/proc/version\"."));
+    }
+    FilePath procDir(QString("/proc/%1").arg(QString::number(pid)));
+    if (procDir.isExistingDir()) {
+        QFileInfo info(procDir.toStr());
+        QDateTime created = info.created().toUTC();
+        if (created.isValid()) {
+            return created;
+        } else {
+            throw RuntimeError(__FILE__, __LINE__, QString(), QString(tr(
+                "Could not read creation datetime of \"%1\".")).arg(procDir.toNative()));
+        }
+    } else {
+        return QDateTime(); // process is not running
+    }
+#elif defined(Q_OS_WIN32) || defined(Q_OS_WIN64) // Windows
+
+#else
+#error "Unknown operating system!"
+#endif
 }
 
 /*****************************************************************************************

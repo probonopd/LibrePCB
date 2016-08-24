@@ -60,6 +60,7 @@ namespace librepcb {
  *  -# The username (logon name) of the user which holds the lock
  *  -# The hostname of the user's computer which holds the lock
  *  -# The process id (PID) of the application instance which holds the lock
+ *  -# The process start datetime of the application instance which holds the lock
  *  -# The datetime when the lock file was created/updated (UTC and ISO format!)
  *
  * Example:
@@ -68,6 +69,7 @@ namespace librepcb {
  * homer
  * homer-workstation
  * 1234
+ * 2013-04-13T10:32:44Z
  * 2013-04-13T12:43:52Z
  * @endcode
  *
