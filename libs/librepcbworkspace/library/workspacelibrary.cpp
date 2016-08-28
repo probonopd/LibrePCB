@@ -64,6 +64,7 @@ WorkspaceLibrary::WorkspaceLibrary(Workspace& ws) throw (Exception):
             QString(tr("Invalid library file: \"%1\"")).arg(mLibDbFilePath.toNative()));
     }
 
+    // open the database
     if ( ! mLibDatabase.open()) {
         throw RuntimeError(__FILE__, __LINE__, mLibDbFilePath.toStr(),
             QString(tr("Could not open library file: \"%1\"")).arg(mLibDbFilePath.toNative()));
@@ -166,7 +167,7 @@ void WorkspaceLibrary::getDeviceMetadata(const FilePath& devDir, Uuid* pkgUuid, 
         "SELECT package_uuid, devices_tr.name FROM devices "
         "LEFT JOIN devices_tr ON devices.id=devices_tr.device_id "
         "WHERE filepath = :filepath");
-    query.bindValue(":filepath", devDir.toRelative(mWorkspace.getLibraryPath()));
+    query.bindValue(":filepath", devDir.toRelative(mWorkspace.getLibrariesPath()));
     execQuery(query, false);
 
     if (/*(query.size() == 1) &&*/ (query.first()))
@@ -186,7 +187,7 @@ void WorkspaceLibrary::getPackageMetadata(const FilePath& pkgDir, QString* nameE
         "SELECT packages_tr.name FROM packages "
         "LEFT JOIN packages_tr ON packages.id=packages_tr.package_id "
         "WHERE filepath = :filepath");
-    query.bindValue(":filepath", pkgDir.toRelative(mWorkspace.getLibraryPath()));
+    query.bindValue(":filepath", pkgDir.toRelative(mWorkspace.getLibrariesPath()));
     execQuery(query, false);
 
     if (/*(query.size() == 1) &&*/ (query.first()))
@@ -276,7 +277,7 @@ int WorkspaceLibrary::addCategoriesToDb(const QList<FilePath>& dirs, const QStri
             "INSERT INTO " % tablename % " "
             "(filepath, uuid, version, parent_uuid) VALUES "
             "(:filepath, :uuid, :version, :parent_uuid)");
-        query.bindValue(":filepath",    filepath.toRelative(mWorkspace.getLibraryPath()));
+        query.bindValue(":filepath",    filepath.toRelative(mWorkspace.getLibrariesPath()));
         query.bindValue(":uuid",        element.getUuid().toStr());
         query.bindValue(":version",     element.getVersion().toStr());
         query.bindValue(":parent_uuid", element.getParentUuid().isNull() ? QVariant(QVariant::String) : element.getParentUuid().toStr());
@@ -313,7 +314,7 @@ int WorkspaceLibrary::addElementsToDb(const QList<FilePath>& dirs, const QString
             "INSERT INTO " % tablename % " "
             "(filepath, uuid, version) VALUES "
             "(:filepath, :uuid, :version)");
-        query.bindValue(":filepath",    filepath.toRelative(mWorkspace.getLibraryPath()));
+        query.bindValue(":filepath",    filepath.toRelative(mWorkspace.getLibrariesPath()));
         query.bindValue(":uuid",        element.getUuid().toStr());
         query.bindValue(":version",     element.getVersion().toStr());
         int id = execQuery(query, true);
@@ -361,7 +362,7 @@ int WorkspaceLibrary::addDevicesToDb(const QList<FilePath>& dirs, const QString&
             "INSERT INTO " % tablename % " "
             "(filepath, uuid, version, component_uuid, package_uuid) VALUES "
             "(:filepath, :uuid, :version, :component_uuid, :package_uuid)");
-        query.bindValue(":filepath",        filepath.toRelative(mWorkspace.getLibraryPath()));
+        query.bindValue(":filepath",        filepath.toRelative(mWorkspace.getLibrariesPath()));
         query.bindValue(":uuid",            element.getUuid().toStr());
         query.bindValue(":version",         element.getVersion().toStr());
         query.bindValue(":component_uuid",  element.getComponentUuid().toStr());
@@ -414,7 +415,7 @@ QMultiMap<Version, FilePath> WorkspaceLibrary::getElementFilePathsFromDb(const Q
         QString versionStr = query.value(0).toString();
         QString filepathStr = query.value(1).toString();
         Version version(versionStr);
-        FilePath filepath(FilePath::fromRelative(mWorkspace.getLibraryPath(), filepathStr));
+        FilePath filepath(FilePath::fromRelative(mWorkspace.getLibrariesPath(), filepathStr));
         if (version.isValid() && filepath.isValid())
         {
             elements.insert(version, filepath);
@@ -725,7 +726,7 @@ QMultiMap<QString, FilePath> WorkspaceLibrary::getAllElementDirectories() throw 
     QMultiMap<QString, FilePath> map;
     QStringList filter = QStringList() << "*.dev" << "*.cmpcat" << "*.cmp"
                                        << "*.pkg" << "*.pkgcat" << "*.sym";
-    QDirIterator it(mWorkspace.getLibraryPath().toStr(), filter, QDir::Dirs,
+    QDirIterator it(mWorkspace.getLibrariesPath().toStr(), filter, QDir::Dirs,
                     QDirIterator::Subdirectories);
     while (it.hasNext()) {
         FilePath dirFilePath(it.next());
