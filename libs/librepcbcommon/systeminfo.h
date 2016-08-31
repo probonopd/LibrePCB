@@ -24,6 +24,7 @@
  *  Includes
  ****************************************************************************************/
 #include <QtCore>
+#include "exceptions.h"
 
 /*****************************************************************************************
  *  Namespace / Forward Declarations
@@ -47,7 +48,12 @@ namespace librepcb {
  */
 class SystemInfo final
 {
+        Q_DECLARE_TR_FUNCTIONS(SystemInfo)
+
     public:
+
+        // Constructors/Destructor
+        SystemInfo() = delete;
 
         /**
          * @brief Get the name of the user which is logged in (like "homer")
@@ -76,10 +82,28 @@ class SystemInfo final
          */
         static QString getHostname() noexcept;
 
+        /**
+         * @brief Check whether a process with a given PID is running or not
+         *
+         * @param pid   The process ID to query
+         *
+         * @return  True if the process is running, fals if not
+         *
+         * @throw  Exception    In case of an error.
+         */
+        static bool isProcessRunning(qint64 pid) throw (Exception);
 
-    private:
-
-        SystemInfo(); ///< make the default constructor inaccessible
+        /**
+         * @brief Get the process name of a given PID
+         *
+         * @param pid   The process ID (may be a running process or not)
+         *
+         * @return  The name of the given process ID, or an empty string if no process
+         *          with the given PID exists.
+         *
+         * @throw  Exception    In case of an error.
+         */
+        static QString getProcessNameByPid(qint64 pid) throw (Exception);
 };
 
 /*****************************************************************************************
