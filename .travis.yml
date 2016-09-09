@@ -37,5 +37,6 @@ script:
   - cd build && sudo make install DESTDIR=/app && cd ../
   - sudo wget "https://github.com/probonopd/linuxdeployqt/releases/download/1/linuxdeployqt-1-x86_64.AppImage" -O /usr/local/bin/linuxdeployqt
   - sudo chmod a+x /usr/local/bin/linuxdeployqt
-  - linuxdeployqt /app/usr/bin/librepcb || true
-  - find /app/usr/bin/librepcb
+  - find /app
+  - linuxdeployqt /app/bin/librepcb || true
+  - find /app
