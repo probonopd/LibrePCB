@@ -1,7 +1,5 @@
 language: cpp
-
 sudo: required
-
 cache: ccache
 
 matrix:
