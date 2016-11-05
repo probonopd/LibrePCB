@@ -20,9 +20,9 @@ install:
 
 script:
   - mkdir build && cd build && qmake PREFIX=/app ../librepcb.pro -r "QMAKE_CXX=$CXX" "QMAKE_CC=$CC" && make -j8 && cd ../   # build librepcb
-  - cd build && sudo INSTALL_ROOT=/app make install && cd ../
+  - cd build && sudo make install && cd ../
   - sudo wget "https://github.com/probonopd/linuxdeployqt/releases/download/1/linuxdeployqt-1-x86_64.AppImage" -O /usr/local/bin/linuxdeployqt
   - sudo chmod a+x /usr/local/bin/linuxdeployqt
   - find /app
-  - linuxdeployqt /app/bin/librepcb || true
+  - linuxdeployqt /app/bin/librepcb -appimage || true
   - find /app
